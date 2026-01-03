@@ -18,7 +18,8 @@ extern "C" {
 void ecall_init(void);
 int ecall_dijkstra_search(const char* start_node, const char* end_node);
 
-sgx_status_t SGX_CDECL ocall_fetch_data(const char* key_ut, char* out_data, size_t* real_len, char* out_mac);
+sgx_status_t SGX_CDECL ocall_get_len(const char* key, size_t* len);
+sgx_status_t SGX_CDECL ocall_fetch_data_optim(const char* key, char* out_data, size_t len, char* out_mac);
 sgx_status_t SGX_CDECL ocall_print_string(const char* str);
 sgx_status_t SGX_CDECL sgx_oc_cpuidex(int cpuinfo[4], int leaf, int subleaf);
 sgx_status_t SGX_CDECL sgx_thread_wait_untrusted_event_ocall(int* retval, const void* self);

@@ -89,13 +89,20 @@ void aes_encrypt_blob(const std::string& key_hex, const std::vector<char>& plain
 
 void store_encrypted_node(const std::string& u_id, std::vector<EdgePayload>& neighbors) {
     std::vector<char> raw_payload;
-    raw_payload.push_back((char)neighbors.size());
+
+    // [修复] 使用 4 字节 int
+    int count = (int)neighbors.size();
+    char* p_count = (char*)&count;
+    for(int i=0; i<sizeof(int); i++) {
+        raw_payload.push_back(p_count[i]);
+    }
+
     for(auto& edge : neighbors) {
         char* p = (char*)&edge;
         for(size_t i=0; i<sizeof(EdgePayload); i++) raw_payload.push_back(p[i]);
     }
-    // 最小 Padding
-    if (raw_payload.size() < 1000) raw_payload.resize(1000, 0); 
+    
+   if (raw_payload.size() < 1000) raw_payload.resize(1000, 0);
 
     std::string lookup_key = app_sha256(u_id + "_lookup");
     std::string aes_key = app_sha256(u_id + "_aes_key"); 
@@ -108,30 +115,29 @@ void store_encrypted_node(const std::string& u_id, std::vector<EdgePayload>& nei
     SERVER_DB[lookup_key] = {encrypted_blob, mac};
 }
 
-// === 修改：返回真实长度 ===
-#define MAX_BUF_SIZE 5000000 // 改为 5MB
-// ... 在 ocall_fetch_data 中确保使用了这个宏 ...
+// [实现] 优化的 OCALL
+void ocall_get_len(const char* key, size_t* len) {
+    std::string k(key);
+    if (SERVER_DB.find(k) != SERVER_DB.end()) {
+        *len = SERVER_DB[k].first.size();
+    } else {
+        *len = 0;
+    }
+}
 
-void ocall_fetch_data(const char* key_ut, char* out_data, size_t* real_len, char* out_mac) {
-    std::string k(key_ut);
+void ocall_fetch_data_optim(const char* key, char* out_data, size_t len, char* out_mac) {
+    std::string k(key);
     if (SERVER_DB.find(k) != SERVER_DB.end()) {
         auto& entry = SERVER_DB[k];
         std::vector<char>& blob = entry.first;
-        std::string mac = entry.second;
         
-        *real_len = blob.size();
-        
-        // 如果数据过大，必须截断，否则会溢出 SGX 边界导致崩溃
-        // 并在 Enclave 端处理这个截断
-        size_t cp_len = (*real_len > MAX_BUF_SIZE) ? MAX_BUF_SIZE : *real_len;
-        
-        memcpy(out_data, blob.data(), cp_len);
-        strncpy(out_mac, mac.c_str(), 64);
+        if (len <= blob.size()) {
+            memcpy(out_data, blob.data(), len);
+        }
+        strncpy(out_mac, entry.second.c_str(), 64);
         out_mac[64] = '\0';
     } else {
-        *real_len = 0;
-        out_mac[0] = '\0'; 
-        out_data[0] = '\0';
+        out_mac[0] = '\0';
     }
 }
 
@@ -140,11 +146,14 @@ void ocall_print_string(const char *str) { printf("%s", str); }
 void load_and_encrypt_dataset(const std::string& filename) {
     printf("Loading %s ... ", filename.c_str());
     std::ifstream file(filename);
-    if (!file.is_open()) exit(1);
+    if (!file.is_open()) {
+        printf("Failed to open file!\n");
+        exit(1);
+    }
 
     std::map<std::string, std::vector<EdgePayload>> raw_graph;
     std::string line;
-    int edges_count = 0;
+    long long edges_count = 0;
 
     while (std::getline(file, line)) {
         if (line.empty() || line[0] == '#') continue;
@@ -169,7 +178,7 @@ void load_and_encrypt_dataset(const std::string& filename) {
         std::string u_hash = app_sha256(entry.first); 
         store_encrypted_node(u_hash, entry.second);
     }
-    printf("Done. Nodes: %lu, Edges: %d\n", ALL_NODES.size(), edges_count);
+    printf("Done. Nodes: %lu, Edges: %lld\n", ALL_NODES.size(), edges_count);
 }
 
 int main(int argc, char *argv[]) {
@@ -182,8 +191,7 @@ int main(int argc, char *argv[]) {
     
     load_and_encrypt_dataset(dataset);
 
-    // 修改 1: 打印提示改为 100
-    printf("\nRunning 10 Queries...\n"); 
+    printf("\nRunning 10 Queries (Final Version)...\n"); 
     printf("----------------------------------------------------------------\n");
     printf("%-20s | %-15s | %-20s\n", "Query (Start->End)", "Time (sec)", "HMAC Status");
     printf("----------------------------------------------------------------\n");
@@ -192,8 +200,7 @@ int main(int argc, char *argv[]) {
     int success_count = 0;
     srand(time(NULL));
 
-    // 修改 2: 循环次数改为 100
-    for (int i = 0; i < 10; i++) { 
+    for (int i = 0; i < 100; i++) { 
         std::string start_node = ALL_NODES[rand() % ALL_NODES.size()];
         std::string end_node = ALL_NODES[rand() % ALL_NODES.size()];
         
@@ -208,22 +215,15 @@ int main(int argc, char *argv[]) {
 
         double duration = q_end - q_start;
         total_query_time += duration;
-
-        // 这里不需要打印每一行，否则屏幕会刷太快
-        // 如果想看，可以保留；或者只打印前10个
-        // printf("   Query %d ... \n", i+1 ...);
         
+        printf("Result: %2d | Time: %.4f \n", min_dist, duration);
+
         if (min_dist != -1) success_count++;
     }
 
     printf("----------------------------------------------------------------\n");
-    // 修改 3: 平均时间除以 100.0
-    printf("   -> Avg Query Time: %.4f seconds\n", total_query_time / 10.0);
-    // 修改 4: 连通性统计分母改为 100
-    printf("   -> Connectivity: %d/10 found paths\n", success_count);
-    
-    printf("   [Ref] GraphShield Paper (wiki-Vote):\n");
-    printf("         Avg Query Time: ~11.4 seconds\n");
+    printf("   -> Avg Query Time: %.4f seconds\n", total_query_time / 100.0);
+    printf("   -> Connectivity: %d/100 found paths\n", success_count);
 
     sgx_destroy_enclave(global_eid);
     return 0;

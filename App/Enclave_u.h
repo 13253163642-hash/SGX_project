@@ -16,9 +16,13 @@
 extern "C" {
 #endif
 
-#ifndef OCALL_FETCH_DATA_DEFINED__
-#define OCALL_FETCH_DATA_DEFINED__
-void SGX_UBRIDGE(SGX_NOCONVENTION, ocall_fetch_data, (const char* key_ut, char* out_data, size_t* real_len, char* out_mac));
+#ifndef OCALL_GET_LEN_DEFINED__
+#define OCALL_GET_LEN_DEFINED__
+void SGX_UBRIDGE(SGX_NOCONVENTION, ocall_get_len, (const char* key, size_t* len));
+#endif
+#ifndef OCALL_FETCH_DATA_OPTIM_DEFINED__
+#define OCALL_FETCH_DATA_OPTIM_DEFINED__
+void SGX_UBRIDGE(SGX_NOCONVENTION, ocall_fetch_data_optim, (const char* key, char* out_data, size_t len, char* out_mac));
 #endif
 #ifndef OCALL_PRINT_STRING_DEFINED__
 #define OCALL_PRINT_STRING_DEFINED__

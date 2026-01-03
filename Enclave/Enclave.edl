@@ -9,12 +9,16 @@ enclave {
     };
 
     untrusted {
-        // [out, size=5000000] 改为 5MB
-        void ocall_fetch_data([in, string] const char* key_ut, 
-                            [out, size=5000000] char* out_data, 
-                            [out] size_t* real_len,
-                            [out, size=65] char* out_mac);
-                              
+        // [优化 1] 获取数据长度
+        void ocall_get_len([in, string] const char* key, 
+                           [out] size_t* len);
+
+        // [优化 2] 按需获取数据 (size=len)
+        void ocall_fetch_data_optim([in, string] const char* key, 
+                                    [out, size=len] char* out_data, 
+                                    size_t len,
+                                    [out, size=65] char* out_mac);
+
         void ocall_print_string([in, string] const char *str);
     };
 };

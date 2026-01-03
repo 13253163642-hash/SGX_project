@@ -9,12 +9,17 @@ typedef struct ms_ecall_dijkstra_search_t {
 	size_t ms_end_node_len;
 } ms_ecall_dijkstra_search_t;
 
-typedef struct ms_ocall_fetch_data_t {
-	const char* ms_key_ut;
+typedef struct ms_ocall_get_len_t {
+	const char* ms_key;
+	size_t* ms_len;
+} ms_ocall_get_len_t;
+
+typedef struct ms_ocall_fetch_data_optim_t {
+	const char* ms_key;
 	char* ms_out_data;
-	size_t* ms_real_len;
+	size_t ms_len;
 	char* ms_out_mac;
-} ms_ocall_fetch_data_t;
+} ms_ocall_fetch_data_optim_t;
 
 typedef struct ms_ocall_print_string_t {
 	const char* ms_str;
@@ -48,10 +53,18 @@ typedef struct ms_sgx_thread_set_multiple_untrusted_events_ocall_t {
 	size_t ms_total;
 } ms_sgx_thread_set_multiple_untrusted_events_ocall_t;
 
-static sgx_status_t SGX_CDECL Enclave_ocall_fetch_data(void* pms)
+static sgx_status_t SGX_CDECL Enclave_ocall_get_len(void* pms)
 {
-	ms_ocall_fetch_data_t* ms = SGX_CAST(ms_ocall_fetch_data_t*, pms);
-	ocall_fetch_data(ms->ms_key_ut, ms->ms_out_data, ms->ms_real_len, ms->ms_out_mac);
+	ms_ocall_get_len_t* ms = SGX_CAST(ms_ocall_get_len_t*, pms);
+	ocall_get_len(ms->ms_key, ms->ms_len);
+
+	return SGX_SUCCESS;
+}
+
+static sgx_status_t SGX_CDECL Enclave_ocall_fetch_data_optim(void* pms)
+{
+	ms_ocall_fetch_data_optim_t* ms = SGX_CAST(ms_ocall_fetch_data_optim_t*, pms);
+	ocall_fetch_data_optim(ms->ms_key, ms->ms_out_data, ms->ms_len, ms->ms_out_mac);
 
 	return SGX_SUCCESS;
 }
@@ -106,11 +119,12 @@ static sgx_status_t SGX_CDECL Enclave_sgx_thread_set_multiple_untrusted_events_o
 
 static const struct {
 	size_t nr_ocall;
-	void * table[7];
+	void * table[8];
 } ocall_table_Enclave = {
-	7,
+	8,
 	{
-		(void*)Enclave_ocall_fetch_data,
+		(void*)Enclave_ocall_get_len,
+		(void*)Enclave_ocall_fetch_data_optim,
 		(void*)Enclave_ocall_print_string,
 		(void*)Enclave_sgx_oc_cpuidex,
 		(void*)Enclave_sgx_thread_wait_untrusted_event_ocall,
